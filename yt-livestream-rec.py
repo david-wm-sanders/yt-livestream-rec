@@ -3,7 +3,6 @@
 Usage:
     yt-livestream-rec.py <channel_id>
 """
-
 import signal
 import subprocess
 import sys
@@ -36,11 +35,8 @@ def load_api_key(api_key_path):
 
 def get_livestream(api_key, yt_channel_id):
     yt_api_search_endpoint = "https://www.googleapis.com/youtube/v3/search"
-    yt_api_search_params = {"part": "snippet",
-                            "type": "video",
-                            "eventType": "live",
-                            "channelId": yt_channel_id,
-                            "key": api_key}
+    yt_api_search_params = {"part": "snippet", "type": "video", "eventType": "live",
+                            "channelId": yt_channel_id, "key": api_key}
     api_resp = requests.get(yt_api_search_endpoint, params=yt_api_search_params)
     if api_resp.status_code == 200:
         resp_json = api_resp.json()
