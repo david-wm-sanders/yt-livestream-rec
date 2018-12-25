@@ -1,16 +1,19 @@
+"""yt-livestream-rec
+
+Usage:
+    yt-livestream-rec.py <channel_id>
+"""
+
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
-import colorama
 import requests
+from docopt import docopt
 
 
-colorama.init(autoreset=True)
-
-
-yt_gns_channel_id = "UCaBf1a-dpIsw8OxqH4ki2Kg"
 api_key_p = Path(__file__).parent / "api.key"
 
 
@@ -27,12 +30,11 @@ def load_api_key(api_key_path):
         api_key = api_key_p.read_text(encoding="utf-8").rstrip()
         return api_key
     except FileNotFoundError:
-        print(colorama.Fore.RED + f"No api.key found... exiting.")
+        print(f"No api.key found... exiting.")
         sys.exit(2)
 
 
-# TODO: Rename get_livestream
-def search_livestream(api_key, yt_channel_id):
+def get_livestream(api_key, yt_channel_id):
     yt_api_search_endpoint = "https://www.googleapis.com/youtube/v3/search"
     yt_api_search_params = {"part": "snippet",
                             "type": "video",
@@ -41,71 +43,85 @@ def search_livestream(api_key, yt_channel_id):
                             "key": api_key}
     api_resp = requests.get(yt_api_search_endpoint, params=yt_api_search_params)
     if api_resp.status_code == 200:
-        return api_resp.json()
+        resp_json = api_resp.json()
+        num_results = int(resp_json["pageInfo"]["totalResults"])
+        if num_results == 0:
+            raise NoLivestreamException()
+        elif num_results == 1:
+            # Extract livestream information from json
+            item = resp_json["items"][0]
+            return item["snippet"]["channelTitle"], item["snippet"]["title"], item["id"]["videoId"]
+        else:
+            raise Exception("{num_results} livestreams airing on channel, weird and unhandled, exiting.")
+            sys.exit(1)
     else:
         raise BadApiResponseException(f"Bad response status '{api_resp.status_code}':\n{api_resp.text}")
 
 
-# TODO: Bake this into search_livestream after testing is complete
-def decode_search_livestream_response(resp_json):
-    num_results = int(resp_json["pageInfo"]["totalResults"])
-    if num_results == 0:
-        raise NoLivestreamException()
-    elif num_results > 1:
-        raise Exception("More than one livestream airing on channel, weird and unhandled, exit...")
-        sys.exit(1)
-    else:
-        # Extract livestream information from json
-        item = resp_json["items"][0]
-        channel, title, video_id = item["snippet"]["channelTitle"], item["snippet"]["title"], item["id"]["videoId"]
-        return channel, title, video_id
+def poll_for_livestream(api_key, video_id):
+    i, i_max, sleep_interval = 0, 20, 30
+    while True:
+        try:
+            i += 1
+            channel_name, title, video_id = get_livestream(api_key, yt_channel_id)
+            return channel_name, title, video_id
+        except NoLivestreamException:
+            if i < i_max:
+                time.sleep(sleep_interval)
+            else:
+                raise
 
 
 def download_livestream(yt_video_id):
-    # run 'youtube-dl.exe -F https://www.youtube.com/watch?v={yt_video_id}' with subprocess
-    # TODO: Implement other variables such as output directory and filename
     # TODO: Consider importing youtube-dl and using it as a module instead
     yt_video_url = f"https://www.youtube.com/watch?v={yt_video_id}"
-    try:
-        ytdl = subprocess.Popen(["youtube-dl.exe", yt_video_url], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # While the process is not finished/terminated...
-        while not ytdl.poll():
-            try:
-                # Attempt to communicate with the process for 1 second
-                stdout, stderr = ytdl.communicate(input=None, timeout=1)
-                # Handle youtube-dl and, by extension, ffmpeg output
-                output_lines = stdout.decode("utf-8").splitlines()
-                for output_line in output_lines:
-                    # TODO: Match lines and only output ones of interest
-                    print(f"{output_line}")
-                # Display any error output
-                error_lines = stderr.decode("utf-8").splitlines()
-                for error_line in error_lines:
-                    print(colorama.Fore.RED + f"{error_line}")
-            except subprocess.TimeoutExpired:
-                # If communication times out, ignore the exception and attempt to communicate again
-                pass
-    except KeyboardInterrupt:
-        # Terminate the background ytdl process and re-raise KeyboardInterrupt
-        ytdl.terminate()
-        raise
+    subprocess.run(["youtube-dl.exe", "-f", "best", yt_video_url, "-o", "rec/%(title)s.%(ext)s"])
+    # This is buggy af below - sometimes the pipes just don't receive any stdout/stderr even if the process runs
+    # try:
+    #     ytdl = subprocess.Popen(["youtube-dl.exe", yt_video_url,
+    #                              "-o", "rec/%(title)s.%(ext)s"],
+    #                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    #     # While the process is not finished/terminated...
+    #     while ytdl.poll() is None:
+    #         try:
+    #             # Attempt to communicate with the process for 1 second
+    #             stdout, stderr = ytdl.communicate(input=None, timeout=1)
+    #         except subprocess.TimeoutExpired as e:
+    #             stdout, stderr = e.stdout, e.stderr
+    #         # Handle youtube-dl and, by extension, ffmpeg output
+    #         if stdout:
+    #             output_lines = stdout.decode("utf-8").splitlines()
+    #             for output_line in output_lines:
+    #                 # TODO: Match lines and only output ones of interest
+    #                 print(f"{output_line}")
+    #         if stderr:
+    #             # Display any error output
+    #             error_lines = stderr.decode("utf-8").splitlines()
+    #             for error_line in error_lines:
+    #                 print(f"{error_line}")
+    # except KeyboardInterrupt:
+    #     # Terminate the background ytdl process and re-raise KeyboardInterrupt
+    #     ytdl.terminate()
+    #     raise
 
 
 if __name__ == '__main__':
+    args = docopt(__doc__)
+    yt_channel_id = args["<channel_id>"]
+
     print(f"Loading API key...")
     api_key = load_api_key(api_key_p)
 
-    print(f"Searching for livestream on YouTube channel '{yt_gns_channel_id}'...")
-    # resp_json = search_livestream(api_key, yt_gns_channel_id)
-    # DEBUG: load filled response from file for dev purposes
-    import json
-    resp_json = json.loads((Path(__file__).parent / "example_filled_resp.json").read_text())
+    print(f"Polling for livestream on YouTube channel '{yt_channel_id}'...")
     try:
-        livestream = decode_search_livestream_response(resp_json)
+        channel_name, title, video_id = poll_for_livestream(api_key, yt_channel_id)
     except NoLivestreamException:
-        print(colorama.Fore.RED + "No livestream on channel...")
+        print("No livestream found whilst polling... exiting.")
         sys.exit(3)
 
-    print(colorama.Fore.GREEN + f"'{livestream[0]}' are livestreaming '{livestream[1]}' [{livestream[2]}]")
-    print("Downloading livestream with youtube-dl...")
-    download_livestream(livestream[2])
+    print(f"'{channel_name}' are livestreaming '{title}' [{video_id}]")
+    print(f"Downloading '{video_id}'...")
+    try:
+        download_livestream(video_id)
+    except KeyboardInterrupt:
+        print("Download interrupted by user")
