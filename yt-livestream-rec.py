@@ -52,7 +52,7 @@ def get_livestream(api_key, yt_channel_id):
             item = resp_json["items"][0]
             return item["snippet"]["channelTitle"], item["snippet"]["title"], item["id"]["videoId"]
         else:
-            raise Exception("{num_results} livestreams airing on channel, weird and unhandled, exiting.")
+            raise Exception("{num_results} livestreams airing on channel, this is weird and unhandled... exiting.")
             sys.exit(1)
     else:
         raise BadApiResponseException(f"Bad response status '{api_resp.status_code}':\n{api_resp.text}")
@@ -76,33 +76,6 @@ def download_livestream(yt_video_id):
     # TODO: Consider importing youtube-dl and using it as a module instead
     yt_video_url = f"https://www.youtube.com/watch?v={yt_video_id}"
     subprocess.run(["youtube-dl.exe", "-f", "best", yt_video_url, "-o", "rec/%(title)s.%(ext)s"])
-    # This is buggy af below - sometimes the pipes just don't receive any stdout/stderr even if the process runs
-    # try:
-    #     ytdl = subprocess.Popen(["youtube-dl.exe", yt_video_url,
-    #                              "-o", "rec/%(title)s.%(ext)s"],
-    #                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    #     # While the process is not finished/terminated...
-    #     while ytdl.poll() is None:
-    #         try:
-    #             # Attempt to communicate with the process for 1 second
-    #             stdout, stderr = ytdl.communicate(input=None, timeout=1)
-    #         except subprocess.TimeoutExpired as e:
-    #             stdout, stderr = e.stdout, e.stderr
-    #         # Handle youtube-dl and, by extension, ffmpeg output
-    #         if stdout:
-    #             output_lines = stdout.decode("utf-8").splitlines()
-    #             for output_line in output_lines:
-    #                 # TODO: Match lines and only output ones of interest
-    #                 print(f"{output_line}")
-    #         if stderr:
-    #             # Display any error output
-    #             error_lines = stderr.decode("utf-8").splitlines()
-    #             for error_line in error_lines:
-    #                 print(f"{error_line}")
-    # except KeyboardInterrupt:
-    #     # Terminate the background ytdl process and re-raise KeyboardInterrupt
-    #     ytdl.terminate()
-    #     raise
 
 
 if __name__ == '__main__':
@@ -118,10 +91,13 @@ if __name__ == '__main__':
     except NoLivestreamException:
         print("No livestream found whilst polling... exiting.")
         sys.exit(3)
+    except KeyboardInterrupt:
+        print("Polling cancelled by user... exiting.")
+        sys.exit(4)
 
     print(f"'{channel_name}' are livestreaming '{title}' [{video_id}]")
     print(f"Downloading '{video_id}'...")
     try:
         download_livestream(video_id)
     except KeyboardInterrupt:
-        print("Download interrupted by user")
+        print("Download cancelled by user")
