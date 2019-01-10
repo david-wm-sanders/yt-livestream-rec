@@ -54,7 +54,7 @@ def get_livestream(api_key, yt_channel_id):
         raise BadApiResponseException(f"Bad response status '{api_resp.status_code}':\n{api_resp.text}")
 
 
-def poll_for_livestream(api_key, video_id):
+def poll_for_livestream(api_key, yt_channel_id):
     i, i_max, sleep_interval = 0, 20, 30
     while True:
         try:
@@ -63,6 +63,7 @@ def poll_for_livestream(api_key, video_id):
             return channel_name, title, video_id
         except NoLivestreamException:
             if i < i_max:
+                print(f"[{i:02d}] No livestream yet for '{yt_channel_id}', waiting {sleep_interval} seconds...")
                 time.sleep(sleep_interval)
             else:
                 raise
