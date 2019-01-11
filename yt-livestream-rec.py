@@ -72,7 +72,7 @@ def poll_for_livestream(api_key, yt_channel_id):
 def download_livestream(yt_video_id):
     # TODO: Consider importing youtube-dl and using it as a module instead
     yt_video_url = f"https://www.youtube.com/watch?v={yt_video_id}"
-    subprocess.run(["youtube-dl.exe", "-f", "best", yt_video_url, "-o", "rec/%(title)s.%(ext)s"])
+    subprocess.run(["youtube-dl.exe", "-f", "95", yt_video_url, "-o", "rec/%(title)s.%(ext)s"])
 
 
 if __name__ == '__main__':
